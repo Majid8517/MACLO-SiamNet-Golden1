@@ -1,0 +1,22 @@
+name: maclo_golden
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cpuonly
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - opencv
+  - pillow
+  - matplotlib
+  - pyyaml
+  - pip
+  - pip:
+      - einops
+      - pydicom

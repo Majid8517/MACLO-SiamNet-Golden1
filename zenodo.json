@@ -1,0 +1,24 @@
+{
+  "title": "MACLO-SiamNet (Golden Repro Pack): Multimodal MRI\u2013CT Co-Learning for AIS",
+  "upload_type": "software",
+  "description": "One-command reproduction from image folders; training/evaluation/ablation; artifacts bundled.",
+  "creators": [
+    {
+      "name": "Anonymous, Author"
+    }
+  ],
+  "keywords": [
+    "stroke",
+    "MRI",
+    "CT",
+    "segmentation",
+    "classification",
+    "age estimation",
+    "transformer",
+    "multimodal",
+    "uncertainty weighting",
+    "sparse attention"
+  ],
+  "license": "MIT",
+  "notes": "Double-anonymous peer-review; user-supplied images."
+}
