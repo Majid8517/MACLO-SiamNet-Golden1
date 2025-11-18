@@ -2,7 +2,9 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it."
 title: "MACLO-SiamNet (Golden Repro Pack)"
 authors:
-  - family-names: "Anonymous"
-    given-names: "Author"
+  - family-names: "Alkaraawi"
+    given-names: "Majid Rahman Laftar"
+    family-names: "Shengwu"
+    given-names: "Xiong"
 date-released: "2025-11-18"
 version: "1.0.0"
