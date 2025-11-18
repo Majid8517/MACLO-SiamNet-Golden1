@@ -1,0 +1,19 @@
+SEED: 2025
+DEVICE: cpu
+TRAIN:
+  BATCH_SIZE: 8
+  LR: 1e-3
+  EPOCHS: 3
+  OPTIMIZER: adam
+  DETERMINISTIC: true
+MODEL:
+  NAME: MACLO-SiamNet
+  MRI_BACKBONE: TwoStageFocalTransformerHopfield
+  CT_BACKBONE: ModifiedEfficientViT
+  FUSION: SCCT
+  ATTENTION: SPAM
+  MULTITASK: MACLO
+LOSS:
+  TASKS: ["seg", "cls", "age"]
+INPUT:
+  IMG_SIZE: 256

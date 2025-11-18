@@ -1,0 +1,5 @@
+DATA:
+  IMAGE_ROOT: ./data/images_root
+  SPLIT_CSV: ./data/splits.csv
+OUTPUT_ROOT: ./results
+CHECKPOINT_ROOT: ./checkpoints
