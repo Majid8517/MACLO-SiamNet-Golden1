@@ -21,8 +21,15 @@ data/ISLES/
 Our repository includes all scripts necessary to reproduce the experiments once the datasets are acquired.
 
 ## Quick start
-```bash
+### Reproducing the results (single command)
+
 conda env create -f environment.yml
 conda activate maclo_golden
 
 bash reproduce_all.sh
+This script automatically:
+- Downloads public ISLES data
+- Configures folder structure
+- Trains MACLO-SiamNet on ISLES / CPAISD / AISD
+- Evaluates segmentation, classification, and lesion-age estimation
+- Generates Tables 3–7 and Figures 3–9 in the paper
