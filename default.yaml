@@ -1,19 +1,34 @@
 SEED: 2025
-DEVICE: cpu
+
+DEVICE: "cpu"
+
+DATA:
+  TRAIN_CSV: "data/train.csv"
+  VAL_CSV: "data/val.csv"
+  TEST_CSV: "data/test.csv"
+
+INPUT:
+  IMG_SIZE: 256
+
 TRAIN:
   BATCH_SIZE: 8
   LR: 1e-3
   EPOCHS: 3
-  OPTIMIZER: adam
+  OPTIMIZER: "adam"
   DETERMINISTIC: true
+
 MODEL:
-  NAME: MACLO-SiamNet
-  MRI_BACKBONE: TwoStageFocalTransformerHopfield
-  CT_BACKBONE: ModifiedEfficientViT
-  FUSION: SCCT
-  ATTENTION: SPAM
-  MULTITASK: MACLO
+  NAME: "MACLO-SiamNet"
+  MRI_BACKBONE: "TwoStageFocalTransformerHopfield"
+  CT_BACKBONE: "ModifiedEfficientViT"
+  FUSION: "SCCT"
+  ATTENTION: "SPAM"
+  MULTITASK: "MACLO"
+
 LOSS:
   TASKS: ["seg", "cls", "age"]
-INPUT:
-  IMG_SIZE: 256
+  WEIGHTS: [1.0, 1.0, 1.0]
+
+CUDNN_BENCHMARK: false
+CUDNN_DETERMINISTIC: true
+
