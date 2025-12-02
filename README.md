@@ -20,6 +20,13 @@ data/AISD/
 data/ISLES/
 Our repository includes all scripts necessary to reproduce the experiments once the datasets are acquired.
 
+## Requirements
+- Python 3.12
+- TensorFlow 2.15.0
+- CUDA 11.8 + cuDNN 8.6 (for GPU acceleration)
+- Minimum GPU memory: 8 GB
+- Tested on: NVIDIA RTX 4050 (8 GB, Windows 10)
+
 ## Quick start
 ### Reproducing the results (single command)
 
