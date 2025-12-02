@@ -1,12 +1,36 @@
+# Python cache
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Virtual environments
 .venv/
 venv/
 env/
-.ipynb_checkpoints
-data/
-checkpoints/
-results/
-artifact/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# OS junk
 .DS_Store
 Thumbs.db
+
+# Local data (but keep example files)
+data/*
+!data/README.md
+!data/example.csv
+
+# Model checkpoints
+checkpoints/
+*.pth
+*.pt
+
+# Results and logs
+results/
+logs/
+runs/
+artifact/
+
+# IDE/project files
+.vscode/
+.idea/
