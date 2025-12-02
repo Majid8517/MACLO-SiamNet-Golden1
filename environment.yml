@@ -4,11 +4,11 @@ channels:
   - conda-forge
 dependencies:
   - python=3.10
-  - pytorch
-  - torchvision
-  - torchaudio
+  - pytorch=2.3
+  - torchvision=0.18
+  - torchaudio=2.3
   - cpuonly
-  - numpy
+  - numpy=1.26
   - scipy
   - pandas
   - scikit-learn
