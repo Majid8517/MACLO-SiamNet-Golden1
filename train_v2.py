@@ -1,6 +1,5 @@
 from __future__ import annotations
-import argparse
-import random
+import argparse, random
 from pathlib import Path
 
 import numpy as np
@@ -8,12 +7,8 @@ import torch
 from torch.utils.data import DataLoader
 import yaml
 
-from maclo_v2 import (
-    MACLOSiamNetV2,
-    HeterogeneousStrokeDataset,
-    compute_task_losses,
-    MACLOController,
-)
+from maclo_v2 import MACLOSiamNetV2, HeterogeneousStrokeDataset, compute_task_losses, MACLOController
+from maclo_v2.metadata import ClinicalMetadataEncoder
 
 
 def set_seed(seed: int):
@@ -26,17 +21,18 @@ def set_seed(seed: int):
 def move_nested(batch, device):
     inputs = {k: v.to(device) for k, v in batch["inputs"].items()}
     availability = batch["availability"].to(device)
+    metadata = batch["metadata"].to(device)
     targets = {k: v.to(device) for k, v in batch["targets"].items()}
     masks = {k: v.to(device) for k, v in batch["task_mask"].items()}
-    return inputs, availability, targets, masks
+    return inputs, availability, metadata, targets, masks
 
 
 def active_losses(losses, masks):
-    active = {}
-    for task, loss in losses.items():
-        if task in masks and masks[task].any().item():
-            active[task] = loss
-    return active
+    return {
+        task: loss
+        for task, loss in losses.items()
+        if task in masks and masks[task].any().item()
+    }
 
 
 def main(csv_path: str, config_path: str):
@@ -46,24 +42,28 @@ def main(csv_path: str, config_path: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     modalities = list(cfg["modalities"])
 
+    metadata_encoder = None
+    if cfg.get("metadata", {}).get("enabled", False):
+        metadata_encoder = ClinicalMetadataEncoder.fit_csv(csv_path, split="train")
+        if metadata_encoder.dim != int(cfg["meta_dim"]):
+            raise ValueError(
+                f"meta_dim={cfg['meta_dim']} but encoder produces {metadata_encoder.dim} features."
+            )
+
     train_ds = HeterogeneousStrokeDataset(
-        csv_path, modalities, "train", int(cfg["image_size"])
+        csv_path, modalities, "train", int(cfg["image_size"]), metadata_encoder
     )
     val_ds = HeterogeneousStrokeDataset(
-        csv_path, modalities, "val", int(cfg["image_size"])
+        csv_path, modalities, "val", int(cfg["image_size"]), metadata_encoder
     )
 
     train_loader = DataLoader(
-        train_ds,
-        batch_size=int(cfg["training"]["batch_size"]),
-        shuffle=True,
-        num_workers=int(cfg["training"]["num_workers"]),
+        train_ds, batch_size=int(cfg["training"]["batch_size"]),
+        shuffle=True, num_workers=int(cfg["training"]["num_workers"])
     )
     val_loader = DataLoader(
-        val_ds,
-        batch_size=int(cfg["training"]["batch_size"]),
-        shuffle=False,
-        num_workers=int(cfg["training"]["num_workers"]),
+        val_ds, batch_size=int(cfg["training"]["batch_size"]),
+        shuffle=False, num_workers=int(cfg["training"]["num_workers"])
     )
 
     model = MACLOSiamNetV2(
@@ -88,7 +88,7 @@ def main(csv_path: str, config_path: str):
 
     best_val = float("inf")
     bad_epochs = 0
-    checkpoint = Path("checkpoints_v2/best.pt")
+    checkpoint = Path(cfg["training"].get("checkpoint", "checkpoints_v2/best.pt"))
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(int(cfg["training"]["max_epochs"])):
@@ -96,27 +96,24 @@ def main(csv_path: str, config_path: str):
         running = 0.0
 
         for batch in train_loader:
-            inputs, availability, targets, masks = move_nested(batch, device)
-
+            inputs, availability, metadata, targets, masks = move_nested(batch, device)
             optimizer.zero_grad(set_to_none=True)
-            outputs = model(inputs, availability)
-            losses = compute_task_losses(outputs, targets, masks)
-            losses = active_losses(losses, masks)
+
+            outputs = model(
+                inputs, availability,
+                metadata if metadata.shape[-1] > 0 else None
+            )
+            losses = active_losses(compute_task_losses(outputs, targets, masks), masks)
             if not losses:
                 continue
 
-            # First obtain task gradients for the shared trunk while graph is intact.
-            stats = maclo.task_gradients(losses, model.shared_parameters())
-
-            # Ordinary backward supplies task-head/non-shared gradients.
-            total = torch.stack(list(losses.values())).sum()
-            total.backward()
-
-            # Recompute and overwrite only the designated shared gradients
-            # with the MACLO unified gradient.
-            maclo_stats = maclo.overwrite_shared_gradients(
+            shared_params, unified_parts, maclo_stats = maclo.compute_unified_gradients(
                 losses, model.shared_parameters()
             )
+
+            total = torch.stack(list(losses.values())).sum()
+            total.backward()
+            maclo.apply_unified_gradients(shared_params, unified_parts)
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -126,31 +123,30 @@ def main(csv_path: str, config_path: str):
         val_total, val_batches = 0.0, 0
         with torch.no_grad():
             for batch in val_loader:
-                inputs, availability, targets, masks = move_nested(batch, device)
-                outputs = model(inputs, availability)
-                losses = compute_task_losses(outputs, targets, masks)
-                losses = active_losses(losses, masks)
+                inputs, availability, metadata, targets, masks = move_nested(batch, device)
+                outputs = model(
+                    inputs, availability,
+                    metadata if metadata.shape[-1] > 0 else None
+                )
+                losses = active_losses(compute_task_losses(outputs, targets, masks), masks)
                 if losses:
                     val_total += float(torch.stack(list(losses.values())).sum().cpu())
                     val_batches += 1
 
         mean_val = val_total / max(val_batches, 1)
-        print(
-            f"epoch={epoch+1:03d} train_sum={running:.4f} "
-            f"val_sum={mean_val:.4f}"
-        )
+        print(f"epoch={epoch+1:03d} train_sum={running:.4f} val_sum={mean_val:.4f}")
 
         if mean_val < best_val:
             best_val = mean_val
             bad_epochs = 0
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "config": cfg,
-                    "best_val": best_val,
-                },
-                checkpoint,
-            )
+            state = {"model": model.state_dict(), "config": cfg, "best_val": best_val}
+            if metadata_encoder is not None:
+                state["metadata_encoder"] = {
+                    "means": metadata_encoder.means,
+                    "stds": metadata_encoder.stds,
+                    "dim": metadata_encoder.dim,
+                }
+            torch.save(state, checkpoint)
         else:
             bad_epochs += 1
             if bad_epochs >= int(cfg["training"]["early_stopping_patience"]):
