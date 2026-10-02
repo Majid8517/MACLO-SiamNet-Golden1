@@ -4,8 +4,9 @@ modalities: [image_png]
 
 metadata:
   enabled: true
+  excluded_shortcut_fields: [d_dimer]
 
-meta_dim: 32
+meta_dim: 29
 num_classes: 2
 
 model:
