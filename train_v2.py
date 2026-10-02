@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import yaml
+from sklearn.metrics import roc_auc_score
 
 from maclo_v2 import MACLOSiamNetV2, HeterogeneousStrokeDataset, compute_task_losses, MACLOController
 from maclo_v2.metadata import ClinicalMetadataEncoder
@@ -35,7 +36,38 @@ def active_losses(losses, masks):
     }
 
 
-def main(csv_path: str, config_path: str):
+@torch.no_grad()
+def validate(model, loader, device):
+    model.eval()
+    total_loss, batches = 0.0, 0
+    y_true, y_prob = [], []
+
+    for batch in loader:
+        inputs, availability, metadata, targets, masks = move_nested(batch, device)
+        outputs = model(
+            inputs, availability,
+            metadata if metadata.shape[-1] > 0 else None
+        )
+        losses = active_losses(compute_task_losses(outputs, targets, masks), masks)
+        if losses:
+            total_loss += float(torch.stack(list(losses.values())).sum().cpu())
+            batches += 1
+
+        if "cls" in outputs:
+            keep = masks["cls"].bool()
+            if keep.any():
+                probs = torch.softmax(outputs["cls"], dim=1)[:, 1]
+                y_true.extend(targets["cls"][keep].detach().cpu().numpy().astype(int).tolist())
+                y_prob.extend(probs[keep].detach().cpu().numpy().tolist())
+
+    mean_loss = total_loss / max(batches, 1)
+    auc = float("nan")
+    if len(set(y_true)) == 2:
+        auc = float(roc_auc_score(y_true, y_prob))
+    return {"val_loss": mean_loss, "val_auc": auc}
+
+
+def main(csv_path: str, config_path: str, checkpoint_override: str | None = None):
     cfg = yaml.safe_load(Path(config_path).read_text())
     set_seed(int(cfg["seed"]))
 
@@ -86,14 +118,21 @@ def main(csv_path: str, config_path: str):
         temperature=float(cfg["maclo"]["temperature"]),
     )
 
-    best_val = float("inf")
+    selection_metric = cfg.get("evaluation", {}).get("selection_metric", "val_loss")
+    maximize = selection_metric in {"val_auc"}
+    best_score = -float("inf") if maximize else float("inf")
     bad_epochs = 0
-    checkpoint = Path(cfg["training"].get("checkpoint", "checkpoints_v2/best.pt"))
+
+    checkpoint = Path(
+        checkpoint_override
+        or cfg["training"].get("checkpoint", "checkpoints_v2/best.pt")
+    )
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(int(cfg["training"]["max_epochs"])):
         model.train()
         running = 0.0
+        cosine_log, neg_log = [], []
 
         for batch in train_loader:
             inputs, availability, metadata, targets, masks = move_nested(batch, device)
@@ -119,27 +158,31 @@ def main(csv_path: str, config_path: str):
             optimizer.step()
             running += float(total.detach().cpu())
 
-        model.eval()
-        val_total, val_batches = 0.0, 0
-        with torch.no_grad():
-            for batch in val_loader:
-                inputs, availability, metadata, targets, masks = move_nested(batch, device)
-                outputs = model(
-                    inputs, availability,
-                    metadata if metadata.shape[-1] > 0 else None
-                )
-                losses = active_losses(compute_task_losses(outputs, targets, masks), masks)
-                if losses:
-                    val_total += float(torch.stack(list(losses.values())).sum().cpu())
-                    val_batches += 1
+            cosine_log.append(maclo_stats["cosine_matrix"].cpu())
+            neg_log.append(float(maclo_stats["negative_pair_fraction"].cpu()))
 
-        mean_val = val_total / max(val_batches, 1)
-        print(f"epoch={epoch+1:03d} train_sum={running:.4f} val_sum={mean_val:.4f}")
+        val = validate(model, val_loader, device)
+        score = val.get(selection_metric, val["val_loss"])
+        if np.isnan(score):
+            score = -float("inf") if maximize else float("inf")
 
-        if mean_val < best_val:
-            best_val = mean_val
+        mean_neg = float(np.mean(neg_log)) if neg_log else float("nan")
+        print(
+            f"epoch={epoch+1:03d} train_sum={running:.4f} "
+            f"val_loss={val['val_loss']:.4f} val_auc={val['val_auc']:.4f} "
+            f"neg_grad_fraction={mean_neg:.4f}"
+        )
+
+        improved = score > best_score if maximize else score < best_score
+        if improved:
+            best_score = score
             bad_epochs = 0
-            state = {"model": model.state_dict(), "config": cfg, "best_val": best_val}
+            state = {
+                "model": model.state_dict(),
+                "config": cfg,
+                "selection_metric": selection_metric,
+                "best_score": best_score,
+            }
             if metadata_encoder is not None:
                 state["metadata_encoder"] = {
                     "means": metadata_encoder.means,
@@ -153,12 +196,13 @@ def main(csv_path: str, config_path: str):
                 print("Early stopping on validation data only.")
                 break
 
-    print(f"Best checkpoint: {checkpoint} | val={best_val:.6f}")
+    print(f"Best checkpoint: {checkpoint} | {selection_metric}={best_score:.6f}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", required=True)
     parser.add_argument("--config", default="configs/phase1.yaml")
+    parser.add_argument("--checkpoint", default=None)
     args = parser.parse_args()
-    main(args.csv, args.config)
+    main(args.csv, args.config, args.checkpoint)
