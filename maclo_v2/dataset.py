@@ -2,7 +2,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional
 import csv
-import json
 
 import numpy as np
 import pydicom
@@ -10,8 +9,9 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 
+from .metadata import ClinicalMetadataEncoder
 
-MISSING = {"", "NA", "NaN", "nan", "None", None}
+MISSING = {"", "NA", "N/A", "NaN", "nan", "None", None}
 
 
 def _load_gray(path: str, image_size: int) -> torch.Tensor:
@@ -42,31 +42,18 @@ def _load_mask(path: str, image_size: int) -> torch.Tensor:
 
 
 class HeterogeneousStrokeDataset(Dataset):
-    """
-    Patient-row CSV loader with explicit missingness.
-
-    Recommended columns:
-      patient_id,dataset,split,
-      ncct_path,cbf_path,cbv_path,mtt_path,tmax_path,
-      mask_path,age_hours,cls_label,metadata_json
-
-    Rules:
-    - unavailable modalities become zero tensors AND availability=False;
-    - missing labels remain task_mask=False;
-    - missing age/class is never treated as a valid 0 target;
-    - metadata is returned as a raw dict here; vectorization should use a
-      pre-declared leakage-audited key list.
-    """
     def __init__(
         self,
         csv_path: str,
         modalities: List[str],
         split: str,
         image_size: int = 256,
+        metadata_encoder: Optional[ClinicalMetadataEncoder] = None,
     ):
         self.rows = []
         self.modalities = list(modalities)
         self.image_size = image_size
+        self.metadata_encoder = metadata_encoder
 
         with open(csv_path, newline="", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
@@ -88,12 +75,11 @@ class HeterogeneousStrokeDataset(Dataset):
             path = row.get(f"{modality}_path", "")
             exists = path not in MISSING and Path(path).exists()
             availability.append(exists)
-            if exists:
-                inputs[modality] = _load_gray(path, self.image_size)
-            else:
-                inputs[modality] = torch.zeros(
-                    1, self.image_size, self.image_size, dtype=torch.float32
-                )
+            inputs[modality] = (
+                _load_gray(path, self.image_size)
+                if exists
+                else torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32)
+            )
 
         if not any(availability):
             raise ValueError(
@@ -105,7 +91,7 @@ class HeterogeneousStrokeDataset(Dataset):
         seg = (
             _load_mask(mask_path, self.image_size)
             if has_seg
-            else torch.zeros(1, self.image_size, self.image_size)
+            else torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32)
         )
 
         age_raw = row.get("age_hours", "")
@@ -116,17 +102,18 @@ class HeterogeneousStrokeDataset(Dataset):
         has_cls = cls_raw not in MISSING
         cls = int(cls_raw) if has_cls else 0
 
-        metadata = {}
-        meta_path = row.get("metadata_json", "")
-        if meta_path not in MISSING and Path(meta_path).exists():
-            with open(meta_path, "r", encoding="utf-8") as handle:
-                metadata = json.load(handle)
+        metadata = (
+            self.metadata_encoder.transform_row(row)
+            if self.metadata_encoder is not None
+            else torch.empty(0, dtype=torch.float32)
+        )
 
         return {
             "patient_id": row.get("patient_id", str(idx)),
             "dataset": row.get("dataset", ""),
             "inputs": inputs,
             "availability": torch.tensor(availability, dtype=torch.bool),
+            "metadata": metadata,
             "targets": {
                 "seg": seg,
                 "age": torch.tensor(age, dtype=torch.float32),
@@ -137,5 +124,4 @@ class HeterogeneousStrokeDataset(Dataset):
                 "age": torch.tensor(has_age, dtype=torch.bool),
                 "cls": torch.tensor(has_cls, dtype=torch.bool),
             },
-            "metadata_raw": metadata,
         }
