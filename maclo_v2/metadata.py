@@ -7,16 +7,20 @@ import torch
 
 MISSING = {"", "NA", "N/A", "NaN", "nan", "None", None}
 
+# Primary clinical feature set. D-dimer is intentionally excluded from the
+# primary model because the supplied dataset shows deterministic separation:
+# all normal cases are "Negative" and all stroke cases are "Positive".
+# Retaining it would create an almost label-equivalent shortcut.
 NUMERIC_FIELDS = ["age", "avg_glucose_level", "cholesterol", "bmi"]
 BINARY_FIELDS = ["hypertension", "heart_disease"]
 CATEGORICAL_FIELDS = {
     "gender": ["Female", "Male", "Unknown"],
-    "d_dimer": ["Negative", "Positive", "Unknown"],
     "marital_status": ["No", "Yes", "Unknown"],
     "work_type": ["Private", "Self-employed", "Govt_job", "children", "Never_worked", "Unknown"],
     "residence_type": ["Rural", "Urban", "Unknown"],
     "smoking_status": ["never", "formerly", "smokes", "Unknown"],
 }
+EXCLUDED_SHORTCUT_FIELDS = ["d_dimer"]
 
 
 def _to_float(value):
@@ -35,7 +39,11 @@ class ClinicalMetadataEncoder:
 
     @property
     def dim(self) -> int:
-        return 2 * len(NUMERIC_FIELDS) + len(BINARY_FIELDS) + sum(len(v) for v in CATEGORICAL_FIELDS.values())
+        return (
+            2 * len(NUMERIC_FIELDS)
+            + len(BINARY_FIELDS)
+            + sum(len(v) for v in CATEGORICAL_FIELDS.values())
+        )
 
     @classmethod
     def fit_csv(cls, csv_path: str, split: str = "train"):
@@ -79,8 +87,6 @@ class ClinicalMetadataEncoder:
 
         for field, vocab in CATEGORICAL_FIELDS.items():
             raw = str(row.get(field, "Unknown")).strip()
-            if field == "d_dimer" and raw == "Posotive":
-                raw = "Positive"
             if raw not in vocab:
                 raw = "Unknown"
             out.extend([1.0 if raw == item else 0.0 for item in vocab])
@@ -89,7 +95,16 @@ class ClinicalMetadataEncoder:
 
     def save(self, path: str):
         with open(path, "w", encoding="utf-8") as handle:
-            json.dump({"means": self.means, "stds": self.stds, "dim": self.dim}, handle, indent=2)
+            json.dump(
+                {
+                    "means": self.means,
+                    "stds": self.stds,
+                    "dim": self.dim,
+                    "excluded_shortcut_fields": EXCLUDED_SHORTCUT_FIELDS,
+                },
+                handle,
+                indent=2,
+            )
 
     @classmethod
     def load(cls, path: str):
