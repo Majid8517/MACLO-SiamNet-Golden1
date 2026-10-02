@@ -70,3 +70,35 @@ Each experiment writes per-fold `metrics.json` and `predictions.csv`, then aggre
 The aggregate file reports mean ± sample standard deviation across the five patient-level folds.
 
 For image-based models, model selection is performed on validation AUC only. The test split is evaluated after checkpoint selection and is never used for early stopping.
+
+
+## Metadata leakage audit
+
+The supplied metadata were checked before using them as predictive inputs. The `d_dimer`
+field is deterministically aligned with the class label in this dataset (400/400 normal cases
+are recorded as Negative and 249/249 stroke cases as Positive). Because this behaves like a
+label shortcut in the present dataset, `d_dimer` is excluded from the primary image+metadata
+model. The primary clinical vector is therefore 29-dimensional.
+
+Run the audit with:
+
+```bash
+python audit_metadata_leakage.py --csv generated_index/fold_0.csv
+```
+
+A D-dimer-inclusive result, if ever reported, must be clearly labeled as a sensitivity analysis
+and not used as the principal evidence for multimodal classification performance.
+
+## Sanity run before full CV
+
+A short three-epoch config is provided only to verify data loading and optimization:
+
+```bash
+python train_v2.py \
+  --csv generated_index/fold_0.csv \
+  --config configs/classification_sanity.yaml \
+  --checkpoint sanity_fold0.pt
+```
+
+Do not report the sanity-run metrics in the manuscript. Use the 256x256 full configs and all
+five held-out test folds for the final results.
