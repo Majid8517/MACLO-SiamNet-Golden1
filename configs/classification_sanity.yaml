@@ -1,0 +1,31 @@
+seed: 2025
+image_size: 128
+modalities: [image_png]
+
+metadata:
+  enabled: true
+  excluded_shortcut_fields: [d_dimer]
+
+meta_dim: 29
+num_classes: 2
+
+model:
+  channels: [32, 64, 128, 256]
+  spam_keep_ratio: 0.25
+  scct_heads: 4
+  scct_depth: 2
+
+training:
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  max_epochs: 3
+  early_stopping_patience: 3
+  num_workers: 0
+
+maclo:
+  conflict_strength: 1.0
+  temperature: 1.0
+
+evaluation:
+  selection_metric: val_auc
