@@ -44,3 +44,29 @@ Numeric metadata normalization is fitted on the training split only. Missing BMI
 
 ## Important
 This branch is a research implementation under controlled re-validation. Legacy manuscript numbers are not reproduced by this code until the new experiments are run and logged.
+
+
+## Five-fold classification evaluation
+
+Three controlled ablations are now supported:
+
+```bash
+python run_classification_cv.py --experiment image_only
+python run_classification_cv.py --experiment metadata_only
+python run_classification_cv.py --experiment image_metadata
+```
+
+Each experiment writes per-fold `metrics.json` and `predictions.csv`, then aggregates:
+- Accuracy
+- Sensitivity
+- Specificity
+- Precision
+- F1
+- ROC-AUC
+- PR-AUC
+- MCC
+- Cohen's kappa
+
+The aggregate file reports mean ± sample standard deviation across the five patient-level folds.
+
+For image-based models, model selection is performed on validation AUC only. The test split is evaluated after checkpoint selection and is never used for early stopping.
