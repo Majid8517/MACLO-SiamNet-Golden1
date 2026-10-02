@@ -1,0 +1,33 @@
+seed: 2025
+image_size: 256
+modalities: [ncct, cbf, cbv, mtt, tmax]
+meta_dim: 0
+num_classes: null
+
+model:
+  channels: [32, 64, 128, 256]
+  spam_keep_ratio: 0.25
+  scct_heads: 4
+  scct_depth: 2
+
+training:
+  batch_size: 4
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  max_epochs: 150
+  early_stopping_patience: 15
+  num_workers: 0
+  amp: true
+
+maclo:
+  conflict_strength: 1.0
+  temperature: 1.0
+
+loss:
+  segmentation: dice_bce
+  age: mse
+  classification: cross_entropy
+
+evaluation:
+  selection_metric: val_dice
+  test_once_after_selection: true
