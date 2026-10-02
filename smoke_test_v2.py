@@ -7,7 +7,7 @@ def main():
     model = MACLOSiamNetV2(
         modality_names=modalities,
         num_classes=2,
-        meta_dim=32,
+        meta_dim=29,
     )
     model.train()
 
@@ -17,7 +17,7 @@ def main():
         [1, 0, 0, 0, 0],
         [0, 1, 1, 1, 1],
     ], dtype=torch.bool)
-    metadata = torch.randn(batch, 32)
+    metadata = torch.randn(batch, 29)
 
     outputs = model(inputs, availability, metadata)
     targets = {
