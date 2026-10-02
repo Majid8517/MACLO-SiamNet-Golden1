@@ -1,0 +1,7 @@
+torch>=2.2
+numpy>=1.26
+Pillow>=10.0
+pydicom>=2.4
+PyYAML>=6.0
+scikit-learn>=1.4
+scipy>=1.12
