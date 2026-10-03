@@ -96,6 +96,8 @@ def main():
         dropout=float(cfg["model"]["dropout"]),
         max_drop_path=float(cfg["model"]["max_drop_path"]),
         ccrf_strength=float(cfg["model"].get("ccrf_strength", 0.35)),
+        sparse_pool_size=int(cfg["model"].get("sparse_pool_size", 6)),
+        sparse_keep_ratio=float(cfg["model"].get("sparse_keep_ratio", 0.25)),
     ).to(device)
 
     opt = torch.optim.AdamW(
