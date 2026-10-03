@@ -95,6 +95,7 @@ def main():
         fusion_mode=cfg["model"]["fusion_mode"],
         dropout=float(cfg["model"]["dropout"]),
         max_drop_path=float(cfg["model"]["max_drop_path"]),
+        ccrf_strength=float(cfg["model"].get("ccrf_strength", 0.35)),
     ).to(device)
 
     opt = torch.optim.AdamW(
