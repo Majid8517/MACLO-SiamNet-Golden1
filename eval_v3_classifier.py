@@ -40,12 +40,14 @@ def main():
         dropout=float(cfg["model"]["dropout"]),
         max_drop_path=float(cfg["model"]["max_drop_path"]),
         ccrf_strength=float(cfg["model"].get("ccrf_strength", 0.35)),
+        sparse_pool_size=int(cfg["model"].get("sparse_pool_size", 6)),
+        sparse_keep_ratio=float(cfg["model"].get("sparse_keep_ratio", 0.25)),
     ).to(device)
     model.load_state_dict(state["model"])
     model.eval()
 
     use_clinical = cfg["model"]["fusion_mode"] != "image_only"
-    ids, y, p, gates = [], [], [], []
+    ids, y, p, gates = [], [], [], []\n    sparse_entropy = []
 
     for image, clinical, label, patient_id in dl:
         image, clinical = image.to(device), clinical.to(device)
@@ -83,7 +85,7 @@ def main():
         }
         (out_dir/"gate_summary.json").write_text(json.dumps(gate_summary, indent=2), encoding="utf-8")
 
-    print(json.dumps(metrics, indent=2))
+    if sparse_entropy:\n        sparse_summary = {\n            "attention_entropy_mean": float(np.mean(sparse_entropy)),\n            "attention_entropy_std": float(np.std(sparse_entropy, ddof=1)),\n        }\n        (out_dir/"sparse_attention_summary.json").write_text(\n            json.dumps(sparse_summary, indent=2), encoding="utf-8"\n        )\n\n    print(json.dumps(metrics, indent=2))
 
 
 if __name__ == "__main__":
