@@ -1,6 +1,10 @@
 from __future__ import annotations
-import argparse, json, subprocess, sys
+import argparse
+import json
+import subprocess
+import sys
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -8,17 +12,27 @@ EXPERIMENTS = {
     "concat": "configs/v3_concat.yaml",
     "scct": "configs/v3_scct.yaml",
     "scct_gate": "configs/v3_scct_gate.yaml",
-    "ccrf": "configs/v3_ccrf.yaml",\n    "ccrf_sparse": "configs/v3_ccrf_sparse.yaml",
+    "ccrf": "configs/v3_ccrf.yaml",
+    "ccrf_sparse": "configs/v3_ccrf_sparse.yaml",
 }
 
 METRICS = [
-    "accuracy","sensitivity","specificity","precision",
-    "f1","auc","pr_auc","mcc","kappa"
+    "accuracy",
+    "sensitivity",
+    "specificity",
+    "precision",
+    "f1",
+    "auc",
+    "pr_auc",
+    "mcc",
+    "kappa",
 ]
+
 
 def run(cmd):
     print("+", " ".join(map(str, cmd)), flush=True)
     subprocess.run(list(map(str, cmd)), check=True)
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -46,18 +60,27 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
 
         run([
-            sys.executable, "train_v3_classifier.py",
-            "--csv", csv_path,
-            "--config", cfg,
-            "--checkpoint", ckpt,
+            sys.executable,
+            "train_v3_classifier.py",
+            "--csv",
+            csv_path,
+            "--config",
+            cfg,
+            "--checkpoint",
+            ckpt,
         ])
 
         run([
-            sys.executable, "eval_v3_classifier.py",
-            "--csv", csv_path,
-            "--config", cfg,
-            "--checkpoint", ckpt,
-            "--out-dir", out_dir,
+            sys.executable,
+            "eval_v3_classifier.py",
+            "--csv",
+            csv_path,
+            "--config",
+            cfg,
+            "--checkpoint",
+            ckpt,
+            "--out-dir",
+            out_dir,
         ])
 
     rows = []
@@ -75,19 +98,23 @@ def main():
     summary = []
     for metric in METRICS:
         vals = np.asarray([r[metric] for r in rows], dtype=float)
+        mean = float(np.mean(vals))
+        std = float(np.std(vals, ddof=1))
         summary.append({
             "metric": metric,
-            "mean": float(np.mean(vals)),
-            "std": float(np.std(vals, ddof=1)),
-            "mean±std": f"{np.mean(vals):.4f} ± {np.std(vals, ddof=1):.4f}",
+            "mean": mean,
+            "std": std,
+            "mean±std": f"{mean:.4f} ± {std:.4f}",
         })
 
-    pd.DataFrame(summary).to_csv(root / "cv_summary.csv", index=False)
+    frame = pd.DataFrame(summary)
+    frame.to_csv(root / "cv_summary.csv", index=False)
     (root / "cv_summary.json").write_text(
         json.dumps({"folds": rows, "summary": summary}, indent=2),
         encoding="utf-8",
     )
-    print(pd.DataFrame(summary).to_string(index=False))
+    print(frame.to_string(index=False))
+
 
 if __name__ == "__main__":
     main()
