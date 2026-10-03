@@ -8,7 +8,7 @@ EXPERIMENTS = {
     "concat": "configs/v3_concat.yaml",
     "scct": "configs/v3_scct.yaml",
     "scct_gate": "configs/v3_scct_gate.yaml",
-    "ccrf": "configs/v3_ccrf.yaml",
+    "ccrf": "configs/v3_ccrf.yaml",\n    "ccrf_sparse": "configs/v3_ccrf_sparse.yaml",
 }
 
 METRICS = [
