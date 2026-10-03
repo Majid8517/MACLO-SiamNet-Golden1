@@ -41,3 +41,29 @@ python eval_v3_classifier.py \
 Repeat with `v3_scct.yaml` and `v3_scct_gate.yaml`.
 
 Do not select the final architecture using test results. Architecture decisions should use validation behavior and the predefined ablation plan; held-out test folds remain for final reporting.
+
+
+## CCRF + Sparse Clinical-Conditioned Evidence Attention
+
+The final classification-side architectural test adds sparse spatial evidence attention after
+CCRF. Because the current stroke-vs-normal classification dataset has no lesion masks, this
+module is deliberately not described as lesion-supervised attention.
+
+```bash
+python train_v3_classifier.py \
+  --csv generated_index/fold_0.csv \
+  --config configs/v3_ccrf_sparse.yaml \
+  --checkpoint results_v3/ccrf_sparse/fold_0/best.pt
+
+python eval_v3_classifier.py \
+  --csv generated_index/fold_0.csv \
+  --config configs/v3_ccrf_sparse.yaml \
+  --checkpoint results_v3/ccrf_sparse/fold_0/best.pt \
+  --out-dir results_v3/ccrf_sparse/fold_0
+```
+
+If the Fold-0 validation behavior is competitive with CCRF, run:
+
+```bash
+python run_v3_cv.py --experiment ccrf_sparse --skip-existing
+```
