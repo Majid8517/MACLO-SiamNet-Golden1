@@ -1,0 +1,21 @@
+seed: 2025
+image_size: 256
+clinical_dim: 29
+
+model:
+  fusion_mode: ccrf_sparse
+  channels: [32, 64, 128, 256]
+  depths: [2, 2, 3, 3]
+  dropout: 0.35
+  max_drop_path: 0.15
+  ccrf_strength: 0.35
+  sparse_pool_size: 6
+  sparse_keep_ratio: 0.25
+
+training:
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  max_epochs: 80
+  early_stopping_patience: 12
+  label_smoothing: 0.05
