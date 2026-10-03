@@ -8,6 +8,7 @@ from .blocks import ImageEncoderV3
 from .clinical import ClinicalTokenEncoder
 from .fusion import SCCTV3, AdaptiveReliabilityGate
 from .ccrf import ClinicalConditionedResidualFusion
+from .sparse_attention import SparseClinicalEvidenceAttention
 
 
 class MACLOClassifierV3(nn.Module):
@@ -20,6 +21,7 @@ class MACLOClassifierV3(nn.Module):
       - scct: SCCT-v3 without adaptive reliability gate
       - scct_gate: SCCT-v3 + reliability gate
       - ccrf: clinical-conditioned residual modulation with image-primary fusion
+      - ccrf_sparse: CCRF + sparse clinical-conditioned spatial evidence attention
     """
 
     def __init__(
@@ -29,11 +31,13 @@ class MACLOClassifierV3(nn.Module):
         channels=(32, 64, 128, 256),
         depths=(2, 2, 3, 3),
         fusion_mode: Literal[
-            "image_only", "concat", "scct", "scct_gate", "ccrf"
+            "image_only", "concat", "scct", "scct_gate", "ccrf", "ccrf_sparse"
         ] = "ccrf",
         dropout: float = 0.35,
         max_drop_path: float = 0.15,
         ccrf_strength: float = 0.35,
+        sparse_pool_size: int = 6,
+        sparse_keep_ratio: float = 0.25,
     ):
         super().__init__()
         self.fusion_mode = fusion_mode
@@ -57,6 +61,7 @@ class MACLOClassifierV3(nn.Module):
         self.scct = None
         self.reliability_gate = None
         self.ccrf = None
+        self.sparse_attention = None
 
         if fusion_mode == "concat":
             self.concat_proj = nn.Sequential(
@@ -72,13 +77,22 @@ class MACLOClassifierV3(nn.Module):
         if fusion_mode == "scct_gate":
             self.reliability_gate = AdaptiveReliabilityGate(dim=dim)
 
-        if fusion_mode == "ccrf":
+        if fusion_mode in {"ccrf", "ccrf_sparse"}:
             self.ccrf = ClinicalConditionedResidualFusion(
                 channels=dim,
                 clinical_dim=dim,
                 hidden=128,
                 modulation_strength=ccrf_strength,
                 dropout=0.20,
+            )
+
+        if fusion_mode == "ccrf_sparse":
+            self.sparse_attention = SparseClinicalEvidenceAttention(
+                channels=dim,
+                clinical_dim=dim,
+                pool_size=sparse_pool_size,
+                keep_ratio=sparse_keep_ratio,
+                dropout=0.15,
             )
 
         self.head = nn.Sequential(
@@ -96,6 +110,8 @@ class MACLOClassifierV3(nn.Module):
 
         gate_weights = None
         modulation_stats = None
+        sparse_attention = None
+        sparse_stats = None
         fused_feature_map = top
 
         if self.fusion_mode == "image_only":
@@ -120,10 +136,17 @@ class MACLOClassifierV3(nn.Module):
                     fused, image_ctx, clinical_ctx
                 )
 
-            elif self.fusion_mode == "ccrf":
+            elif self.fusion_mode in {"ccrf", "ccrf_sparse"}:
                 representation, fused_feature_map, modulation_stats = self.ccrf(
                     top, image_global, clinical_token
                 )
+
+                if self.fusion_mode == "ccrf_sparse":
+                    representation, sparse_attention, sparse_stats = self.sparse_attention(
+                        fused_feature_map,
+                        clinical_token,
+                        representation,
+                    )
 
             else:
                 raise ValueError(f"Unsupported fusion_mode={self.fusion_mode}")
@@ -134,6 +157,8 @@ class MACLOClassifierV3(nn.Module):
             "embedding": representation,
             "gate_weights": gate_weights,
             "modulation_stats": modulation_stats,
+            "sparse_attention": sparse_attention,
+            "sparse_stats": sparse_stats,
             "top_feature": top,
             "fused_feature_map": fused_feature_map,
         }
