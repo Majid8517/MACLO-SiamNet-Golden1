@@ -98,6 +98,7 @@ def main():
         ccrf_strength=float(cfg["model"].get("ccrf_strength", 0.35)),
         sparse_pool_size=int(cfg["model"].get("sparse_pool_size", 6)),
         sparse_keep_ratio=float(cfg["model"].get("sparse_keep_ratio", 0.25)),
+        clinical_encoder_type=str(cfg["model"].get("clinical_encoder_type", "deep")),
     ).to(device)
 
     opt = torch.optim.AdamW(
