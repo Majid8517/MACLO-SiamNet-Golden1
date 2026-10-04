@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
@@ -27,14 +26,17 @@ def safe_auc(y, score):
     if len(np.unique(y)) < 2 or len(np.unique(score)) < 2:
         return np.nan
     auc = roc_auc_score(y, score)
-    # Direction-invariant screening score: a strong inverse relationship is also a shortcut risk.
     return float(max(auc, 1.0 - auc))
 
 
 def numeric_oof_auc(x: pd.Series, y: pd.Series, seed: int, folds: int):
-    X = pd.DataFrame({"x": pd.to_numeric(x, errors="coerce")})
+    x_num = pd.to_numeric(x, errors="coerce")
+    if x_num.notna().sum() == 0 or x_num.nunique(dropna=True) < 2:
+        return np.nan
+
+    X = pd.DataFrame({"x": x_num})
     pipe = Pipeline([
-        ("impute", SimpleImputer(strategy="median", add_indicator=True)),
+        ("impute", SimpleImputer(strategy="median", add_indicator=True, keep_empty_features=True)),
         ("scale", StandardScaler()),
         ("clf", LogisticRegression(max_iter=3000, class_weight="balanced", random_state=seed)),
     ])
@@ -44,15 +46,14 @@ def numeric_oof_auc(x: pd.Series, y: pd.Series, seed: int, folds: int):
 
 
 def categorical_oof_auc(x: pd.Series, y: pd.Series, seed: int, folds: int):
-    X = pd.DataFrame({"x": x.astype("object")})
-    pre = ColumnTransformer([
-        ("cat", Pipeline([
-            ("impute", SimpleImputer(strategy="most_frequent")),
-            ("onehot", OneHotEncoder(handle_unknown="ignore")),
-        ]), ["x"])
-    ])
+    # Fill before CV so a fold containing only missing values still has one valid category.
+    x_cat = x.astype("object").where(x.notna(), "__MISSING__").astype(str)
+    if x_cat.nunique(dropna=False) < 2:
+        return np.nan
+
+    X = pd.DataFrame({"x": x_cat})
     pipe = Pipeline([
-        ("pre", pre),
+        ("onehot", OneHotEncoder(handle_unknown="ignore")),
         ("clf", LogisticRegression(max_iter=3000, class_weight="balanced", random_state=seed)),
     ])
     cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
@@ -129,26 +130,31 @@ def main():
         numeric = pd.to_numeric(s, errors="coerce")
         numeric_fraction = float(numeric.notna().mean())
 
-        # Treat genuinely numeric columns as numeric; otherwise use categorical OOF encoding.
         is_numeric = numeric_fraction >= 0.95 and nunique > 2
 
-        if is_numeric:
-            feature_type = "numeric"
-            auc = numeric_oof_auc(s, y, args.seed, args.folds)
-            association = np.nan
-        else:
-            feature_type = "categorical"
-            auc = categorical_oof_auc(s, y, args.seed, args.folds)
-            association = cramers_v(s, y)
-            tab = pd.crosstab(s.fillna("MISSING"), y)
-            crosstabs[col] = {
-                str(idx): {str(k): int(v) for k, v in row.items()}
-                for idx, row in tab.to_dict(orient="index").items()
-            }
+        try:
+            if is_numeric:
+                feature_type = "numeric"
+                auc = numeric_oof_auc(s, y, args.seed, args.folds)
+                association = np.nan
+            else:
+                feature_type = "categorical"
+                auc = categorical_oof_auc(s, y, args.seed, args.folds)
+                association = cramers_v(s, y)
+                tab = pd.crosstab(s.fillna("MISSING"), y)
+                crosstabs[col] = {
+                    str(idx): {str(k): int(v) for k, v in row.items()}
+                    for idx, row in tab.to_dict(orient="index").items()
+                }
+            audit_error = None
+        except Exception as e:
+            feature_type = "numeric" if is_numeric else "categorical"
+            auc = np.nan
+            association = np.nan if is_numeric else cramers_v(s, y)
+            audit_error = f"{type(e).__name__}: {e}"
 
         miss_auc = missingness_auc(s, y)
 
-        # Deterministic category-label mapping flag.
         deterministic = False
         if not is_numeric:
             tab = pd.crosstab(s.fillna("MISSING"), y)
@@ -156,7 +162,6 @@ def main():
                 tab.shape[0] > 0 and ((tab > 0).sum(axis=1) <= 1).all()
             )
 
-        # Heuristic audit flag only; not a formal statistical conclusion.
         if deterministic or (not np.isnan(auc) and auc >= 0.95):
             risk = "CRITICAL"
         elif not np.isnan(auc) and auc >= 0.85:
@@ -176,14 +181,11 @@ def main():
             "cramers_v_if_categorical": association,
             "deterministic_category_label_mapping": deterministic,
             "leakage_risk_flag": risk,
+            "audit_error": audit_error,
         })
 
-    audit = pd.DataFrame(rows).sort_values(
-        ["leakage_risk_flag", "oof_univariate_auc_direction_invariant"],
-        ascending=[True, False],
-    )
+    audit = pd.DataFrame(rows)
 
-    # Re-order risk labels by explicit severity for readable output.
     risk_order = pd.CategoricalDtype(
         categories=["CRITICAL", "HIGH", "MODERATE", "LOW"], ordered=True
     )
@@ -221,8 +223,13 @@ def main():
 
     critical = audit[audit["leakage_risk_flag"] == "CRITICAL"]["feature"].tolist()
     high = audit[audit["leakage_risk_flag"] == "HIGH"]["feature"].tolist()
+    errors = audit[audit["audit_error"].notna()][["feature", "audit_error"]]
+
     print(f"\nCritical-review features: {critical}")
     print(f"High-review features: {high}")
+    if len(errors):
+        print("\nFeatures with audit errors:")
+        print(errors.to_string(index=False))
 
 
 if __name__ == "__main__":
