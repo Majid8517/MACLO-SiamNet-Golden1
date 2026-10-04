@@ -38,9 +38,11 @@ class MACLOClassifierV3(nn.Module):
         ccrf_strength: float = 0.35,
         sparse_pool_size: int = 6,
         sparse_keep_ratio: float = 0.25,
+        clinical_encoder_type: Literal["deep", "linear"] = "deep",
     ):
         super().__init__()
         self.fusion_mode = fusion_mode
+        self.clinical_encoder_type = clinical_encoder_type
         dim = channels[-1]
 
         self.image_encoder = ImageEncoderV3(
@@ -50,12 +52,20 @@ class MACLOClassifierV3(nn.Module):
 
         self.clinical_encoder = None
         if fusion_mode != "image_only":
-            self.clinical_encoder = ClinicalTokenEncoder(
-                input_dim=clinical_dim,
-                token_dim=dim,
-                hidden_dim=128,
-                dropout=0.25,
-            )
+            if clinical_encoder_type == "deep":
+                self.clinical_encoder = ClinicalTokenEncoder(
+                    input_dim=clinical_dim,
+                    token_dim=dim,
+                    hidden_dim=128,
+                    dropout=0.25,
+                )
+            elif clinical_encoder_type == "linear":
+                # Controlled ablation: a single linear projection with no hidden MLP.
+                self.clinical_encoder = nn.Linear(clinical_dim, dim)
+            else:
+                raise ValueError(
+                    f"Unsupported clinical_encoder_type={clinical_encoder_type}"
+                )
 
         self.concat_proj = None
         self.scct = None
