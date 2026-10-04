@@ -15,9 +15,21 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
 DEFAULT_EXCLUDE = {
-    "cls_label", "label", "target", "patient_id", "image_path", "filepath",
-    "file_path", "path", "split", "fold", "source", "image_id"
+    "cls_label", "label", "target",
+    "patient_id", "source_patient_id", "image_id",
+    "image_path", "image_png_path", "image_jpg_path", "mask_path",
+    "filepath", "file_path", "path",
+    "split", "fold", "outer_fold",
+    "source", "dataset", "modality_label", "age_hours"
 }
+
+def is_technical_column(name: str) -> bool:
+    n = name.lower()
+    return (
+        n.endswith("_path")
+        or n.endswith("_id")
+        or n in {"fold", "outer_fold", "split", "dataset", "source", "modality_label"}
+    )
 
 
 def safe_auc(y, score):
@@ -117,7 +129,10 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     excluded = DEFAULT_EXCLUDE | {args.label_col} | set(args.exclude)
-    candidate_cols = [c for c in df.columns if c not in excluded]
+    candidate_cols = [
+        c for c in df.columns
+        if c not in excluded and not is_technical_column(c)
+    ]
 
     rows = []
     crosstabs = {}
