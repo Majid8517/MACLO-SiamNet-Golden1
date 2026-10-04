@@ -11,6 +11,7 @@ import pandas as pd
 EXPERIMENTS = {
     "image_only": "configs/v3_image_only.yaml",
     "concat_linear": "configs/v3_concat_linear.yaml",
+    "ccrf_linear": "configs/v3_ccrf_linear.yaml",
     "concat": "configs/v3_concat.yaml",
     "scct": "configs/v3_scct.yaml",
     "scct_gate": "configs/v3_scct_gate.yaml",
